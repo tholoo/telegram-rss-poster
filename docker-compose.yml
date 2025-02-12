@@ -1,0 +1,10 @@
+ services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: run
+    image: telegram_rss_poster:latest
+    container_name: telegram_rss_poster
+    env_file:
+      - .env
