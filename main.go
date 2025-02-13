@@ -20,17 +20,32 @@ import (
 const lastTimestampFile = "last_timestamp.json"
 
 var rssLinks = []string{
-	makeDeviantartRSS("petirep"),
-	makeDeviantartRSS("lemmino"),
-	makeDeviantartRSS("a7md3mad"),
-	makeDeviantartRSS("megatruh"),
-	makeDeviantartRSS("t1na"),
-	makeDeviantartRSS("rhads"),
-	makeDeviantartRSS("pypr"),
+	// makeDeviantartRSS("petirep"),
+	// makeDeviantartRSS("lemmino"),
+	// makeDeviantartRSS("a7md3mad"),
+	// makeDeviantartRSS("megatruh"),
+	// makeDeviantartRSS("t1na"),
+	// makeDeviantartRSS("rhads"),
+	// makeDeviantartRSS("pypr"),
+	"https://www.reddit.com/r/ImaginaryLandscapes/.rss",
 }
 
 func makeDeviantartRSS(username string) string {
 	return "https://backend.deviantart.com/rss.xml?type=deviation&q=by%3A" + username + "+sort%3Atime+meta%3Aall"
+}
+
+func extractRedditImage(content string) string {
+	start := strings.Index(content, "https://i.redd.it/")
+	if start == -1 {
+		return ""
+	}
+
+	end := strings.Index(content[start:], "\"")
+	if end == -1 {
+		return ""
+	}
+
+	return content[start : start+end]
 }
 
 func getNewItems(url string) ([]*gofeed.Item, error) {
@@ -51,8 +66,14 @@ func getNewItems(url string) ([]*gofeed.Item, error) {
 			continue
 		}
 
+		imageURL := extractRedditImage(item.Content)
+		if imageURL == "" {
+			continue
+		}
+
 		// If newer than the last processed timestamp, add it
 		if item.PublishedParsed.After(lastTimestamp) {
+			item.Description = imageURL
 			newItems = append(newItems, item)
 		}
 
@@ -142,7 +163,7 @@ func sendItems(b *tele.Bot, c chan *gofeed.Item) {
 			caption += fmt.Sprintf("\n#%s", strcase.ToSnake(author))
 		}
 
-		p := &tele.Photo{File: tele.FromURL(item.Image.URL), Caption: caption}
+		p := &tele.Photo{File: tele.FromURL(item.Description), Caption: caption}
 		_, _ = b.Send(chat, p, &tele.SendOptions{ParseMode: "markdown"})
 
 		sleepDuration := time.Duration(rand.IntN(30-5) + 5)
