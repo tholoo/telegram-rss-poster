@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/iancoleman/strcase"
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
 	tele "gopkg.in/telebot.v4"
@@ -27,25 +27,31 @@ var rssLinks = []string{
 	// makeDeviantartRSS("t1na"),
 	// makeDeviantartRSS("rhads"),
 	// makeDeviantartRSS("pypr"),
-	"https://www.reddit.com/r/ImaginaryLandscapes/.rss",
+	// "https://www.reddit.com/r/ImaginaryLandscapes/.rss",
+	"https://www.pinterest.com/tholoooo/art.rss",
+	"https://www.pinterest.com/tholoooo/aesthetic.rss",
 }
+
+var resolutions = []string{"originals", "1200x", "736x", "564x", "474x", "236x"}
 
 func makeDeviantartRSS(username string) string {
 	return "https://backend.deviantart.com/rss.xml?type=deviation&q=by%3A" + username + "+sort%3Atime+meta%3Aall"
 }
 
-func extractRedditImage(content string) string {
-	start := strings.Index(content, "https://i.redd.it/")
-	if start == -1 {
-		return ""
+func getBestImage(thumbURL string) string {
+	baseURL := strings.Replace(thumbURL, "236x", "", 1) // Remove the small size reference
+
+	for _, res := range resolutions {
+		highResURL := strings.Replace(baseURL, ".com/", fmt.Sprintf(".com/%s/", res), 1)
+
+		// Check if the image exists
+		resp, err := http.Head(highResURL)
+		if err == nil && resp.StatusCode == 200 {
+			return highResURL
+		}
 	}
 
-	end := strings.Index(content[start:], "\"")
-	if end == -1 {
-		return ""
-	}
-
-	return content[start : start+end]
+	return thumbURL
 }
 
 func getNewItems(url string) ([]*gofeed.Item, error) {
@@ -66,14 +72,8 @@ func getNewItems(url string) ([]*gofeed.Item, error) {
 			continue
 		}
 
-		imageURL := extractRedditImage(item.Content)
-		if imageURL == "" {
-			continue
-		}
-
 		// If newer than the last processed timestamp, add it
 		if item.PublishedParsed.After(lastTimestamp) {
-			item.Description = imageURL
 			newItems = append(newItems, item)
 		}
 
@@ -156,14 +156,10 @@ func sendItems(b *tele.Bot, c chan *gofeed.Item) {
 	log.Println("Started Sender!")
 	chat := &tele.Chat{ID: -1002283087300}
 	for item := range c {
-		caption := fmt.Sprintf("[%s](%s)", item.Title, item.Link)
-		author := getAuthor(item.Link)
+		caption := fmt.Sprintf("[%s](%s)", "src", item.Link)
 
-		if author != "" {
-			caption += fmt.Sprintf("\n#%s", strcase.ToSnake(author))
-		}
-
-		p := &tele.Photo{File: tele.FromURL(item.Description), Caption: caption}
+		highQualityURL := getBestImage(item.Image.URL)
+		p := &tele.Photo{File: tele.FromURL(highQualityURL), Caption: caption}
 		_, _ = b.Send(chat, p, &tele.SendOptions{ParseMode: "markdown"})
 
 		sleepDuration := time.Duration(rand.IntN(30-5) + 5)
