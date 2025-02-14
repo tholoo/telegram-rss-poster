@@ -109,9 +109,9 @@ func rssPolling(interval time.Duration, c chan *gofeed.Item) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	var allNewItems []*gofeed.Item
-
 	for range ticker.C {
+		var allNewItems []*gofeed.Item
+
 		log.Println("Polling...")
 		for _, url := range rssLinks {
 			newItems, err := getNewItems(url)
