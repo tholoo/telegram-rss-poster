@@ -33,6 +33,7 @@ var rssLinks = []string{
 	// "https://www.reddit.com/r/ImaginaryLandscapes/.rss",
 	"https://www.pinterest.com/tholoooo/art.rss",
 	"https://www.pinterest.com/tholoooo/aesthetic.rss",
+	"https://www.pinterest.com/tholoooo/quotes.rss",
 }
 
 var resolutions = []string{"originals", "1200x", "736x", "564x", "474x", "236x"}
