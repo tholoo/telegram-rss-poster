@@ -40,6 +40,7 @@ func makeDeviantartRSS(username string) string {
 
 func getBestImage(thumbURL string) string {
 	baseURL := strings.Replace(thumbURL, "236x", "", 1) // Remove the small size reference
+	fmt.Println("Trying to get higher res image for: " + thumbURL)
 
 	for _, res := range resolutions {
 		highResURL := strings.Replace(baseURL, ".com/", fmt.Sprintf(".com/%s/", res), 1)
@@ -47,10 +48,12 @@ func getBestImage(thumbURL string) string {
 		// Check if the image exists
 		resp, err := http.Head(highResURL)
 		if err == nil && resp.StatusCode == 200 {
+			fmt.Println("Found higher res image: " + highResURL)
 			return highResURL
 		}
 	}
 
+	fmt.Println("Couldn't find higher res image.")
 	return thumbURL
 }
 
