@@ -184,10 +184,10 @@ func sendItems(b *tele.Bot, c chan *gofeed.Item) {
 }
 
 func main() {
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	if DEBUG {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	err := godotenv.Load()
 	if err != nil {
