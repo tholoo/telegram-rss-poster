@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand/v2"
 	"net/http"
 	"net/url"
@@ -13,11 +12,15 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/mmcdole/gofeed"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	tele "gopkg.in/telebot.v4"
 )
 
 // Last time that the rss was fetched
 const lastTimestampFile = "last_timestamp.json"
+
+const DEBUG = true
 
 var rssLinks = []string{
 	// makeDeviantartRSS("petirep"),
@@ -39,21 +42,24 @@ func makeDeviantartRSS(username string) string {
 }
 
 func getBestImage(thumbURL string) string {
-	baseURL := strings.Replace(thumbURL, "236x", "", 1) // Remove the small size reference
-	fmt.Println("Trying to get higher res image for: " + thumbURL)
+	// Remove the small size reference
+	baseURL := strings.Replace(thumbURL, "236x/", "", 1)
+	baseURL = strings.Replace(baseURL, "236x", "", 1)
+	log.Info().Str("url", thumbURL).Msg("Trying to get higher res image")
 
 	for _, res := range resolutions {
 		highResURL := strings.Replace(baseURL, ".com/", fmt.Sprintf(".com/%s/", res), 1)
+		log.Debug().Str("url", thumbURL).Str("higherres_url", highResURL).Msg("Trying...")
 
 		// Check if the image exists
 		resp, err := http.Head(highResURL)
 		if err == nil && resp.StatusCode == 200 {
-			fmt.Println("Found higher res image: " + highResURL)
+			log.Info().Str("url", thumbURL).Str("higherres_url", highResURL).Msg("Found higher res image")
 			return highResURL
 		}
 	}
 
-	fmt.Println("Couldn't find higher res image.")
+	log.Info().Str("url", thumbURL).Msg("Couldn't find higher res image")
 	return thumbURL
 }
 
@@ -61,10 +67,12 @@ func getNewItems(url string) ([]*gofeed.Item, error) {
 	fp := gofeed.NewParser()
 	feed, err := fp.ParseURL(url)
 	if err != nil {
+		log.Error().Err(err).Str("url", url).Msg("Couldn't parse url")
 		return nil, err
 	}
 
 	lastTimestamp := loadLastTimestamp()
+	log.Debug().Str("url", url).Time("last_time", lastTimestamp).Msg("loaded last time stamp.")
 	var newItems []*gofeed.Item
 
 	for _, item := range feed.Items {
@@ -85,6 +93,7 @@ func getNewItems(url string) ([]*gofeed.Item, error) {
 		}
 	}
 
+	log.Info().Str("url", url).Int("count", len(newItems)).Msg("Got new items.")
 	return newItems, nil
 }
 
@@ -108,25 +117,27 @@ func saveLastTimestamp(timestamp time.Time) {
 }
 
 func rssPolling(interval time.Duration, c chan *gofeed.Item) {
-	log.Println("Started RSS Poller!")
+	log.Info().Dur("interval", interval).Msg("Started RSS Poller.")
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for range ticker.C {
 		var allNewItems []*gofeed.Item
 
-		log.Println("Polling...")
+		log.Debug().Msg("Polling...")
 		for _, url := range rssLinks {
 			newItems, err := getNewItems(url)
 			if err != nil {
-				log.Println("Couldn't get new items: ", err)
+				log.Error().Str("url", url).Err(err).Msg("Couldn't get new items")
 				continue
 			}
 
-			log.Printf("Got %d new items from %s", len(newItems), url)
+			log.Info().Str("url", url).Int("count", len(newItems)).Msg("Got new items.")
 			allNewItems = append(allNewItems, newItems...)
 		}
-		saveLastTimestamp(time.Now())
+		lastTimestamp := time.Now()
+		log.Debug().Time("lasttime", lastTimestamp).Msg("Saved new last timestamp")
+		saveLastTimestamp(lastTimestamp)
 
 		// Shuffle to not send all posts from the same artist at once
 		rand.Shuffle(len(allNewItems), func(i, j int) {
@@ -143,7 +154,7 @@ func rssPolling(interval time.Duration, c chan *gofeed.Item) {
 func getAuthor(rawURL string) string {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Str("url", rawURL).Msg("Couldn't parse url")
 	}
 
 	parts := strings.Split(strings.TrimPrefix(parsed.Path, "/"), "/")
@@ -156,8 +167,8 @@ func getAuthor(rawURL string) string {
 }
 
 func sendItems(b *tele.Bot, c chan *gofeed.Item) {
-	log.Println("Started Sender!")
 	chat := &tele.Chat{ID: -1002283087300}
+	log.Info().Int64("chat", chat.ID).Msg("Started Sender.")
 	for item := range c {
 		caption := fmt.Sprintf("[%s](%s)", "src", item.Link)
 
@@ -166,15 +177,21 @@ func sendItems(b *tele.Bot, c chan *gofeed.Item) {
 		_, _ = b.Send(chat, p, &tele.SendOptions{ParseMode: "markdown"})
 
 		sleepDuration := time.Duration(rand.IntN(30-5) + 5)
-		log.Printf("Posted %s - Sleeping for %d seconds.", item.Link, sleepDuration)
+		log.Info().Str("item", item.Link).Msg("Posted.")
+		log.Debug().Dur("sleep", sleepDuration).Msg("sleeping...")
 		time.Sleep(sleepDuration * time.Second)
 	}
 }
 
 func main() {
+	if DEBUG {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+	}
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal().Err(err).Msg("Error loading .env file")
 	}
 
 	pref := tele.Settings{
@@ -184,11 +201,11 @@ func main() {
 
 	b, err := tele.NewBot(pref)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("Error creating the bot")
 		return
 	}
 
-	log.Println("Bot Started!")
+	log.Info().Msg("Bot Started!")
 
 	c := make(chan *gofeed.Item)
 	go rssPolling(10*time.Minute, c)
