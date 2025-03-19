@@ -122,7 +122,7 @@ func rssPolling(interval time.Duration, c chan *gofeed.Item) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	for range ticker.C {
+	for ; true; <-ticker.C {
 		var allNewItems []*gofeed.Item
 
 		log.Debug().Msg("Polling...")
